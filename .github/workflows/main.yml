@@ -1,0 +1,81 @@
+
+name: AflatoonCore - Build dylib ZIP
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Theos dylib
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install make ldid
+          echo "$(brew --prefix make)/libexec/gnubin" >> "$GITHUB_PATH"
+
+      - name: Install Theos
+        run: |
+          git clone --depth 1 --recursive \
+            https://github.com/theos/theos.git "$HOME/theos"
+
+          git clone --depth 1 \
+            https://github.com/theos/sdks.git "$HOME/theos/sdks"
+
+          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
+
+      - name: Verify project
+        run: |
+          test -f Makefile
+          test -f AflatoonCore.m
+          test -f APPanel.h
+          test -f APPanel.m
+          test -f APSettings.h
+          test -f APSettings.m
+
+      - name: Build dylib
+        run: |
+          set -e
+          make clean || true
+          make package FINALPACKAGE=1
+
+      - name: Find and package dylib
+        run: |
+          set -e
+
+          mkdir -p release
+
+          find .theos -type f \
+            -name "AflatoonCore.dylib" \
+            -exec cp {} release/ \;
+
+          test -s release/AflatoonCore.dylib
+
+          file release/AflatoonCore.dylib
+
+          shasum -a 256 \
+            release/AflatoonCore.dylib \
+            > release/SHA256.txt
+
+          cd release
+          zip -9 dylib.zip \
+            AflatoonCore.dylib SHA256.txt
+
+      - name: Upload dylib ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: AflatoonCore-dylib-ZIP
+          path: release/dylib.zip
+          if-no-files-found: error
+          retention-days: 30
